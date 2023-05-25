@@ -1,56 +1,44 @@
 import numpy as np
-from torch.utils.data import DataLoader
 import pandas as pd
-from sklearn import metrics
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
-from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans, DBSCAN
+from sklearn.metrics import adjusted_rand_score
+from sklearn import datasets, metrics
+from sklearn.manifold import TSNE
 import seaborn as sns
-from torchvision import datasets, transforms
 
-Fashion_mnist_test_transform = transforms.Compose([transforms.ToTensor()])
-testset_Fashion_mnist = datasets.FashionMNIST(root='./data', train=False, download=True,
-transform=Fashion_mnist_test_transform)
-FM_test = DataLoader(testset_Fashion_mnist, batch_size=32, shuffle=False, num_workers=2)
-FM_test_images = []
-FM_test_labels = []
-for batch in FM_test:
-images, labels = batch
-images_flat = images.view(images.shape[0], -1)
-FM_test_images.append(images_flat.numpy())
-FM_test_labels.append(labels.numpy())
-FM_test_images = np.vstack(FM_test_images)
-FM_test_labels = np.concatenate(FM_test_labels)
 
-X_ = pd.DataFrame(data=FM_test_images) # test data
-y_ = pd.Series(data=FM_test_labels) # test label
+fashion_mnist = datasets.fetch_openml('Fashion-MNIST')
+X_test = fashion_mnist.data[60000:]
+y_test = fashion_mnist.target[60000:]
 
-pca = PCA(n_components= 50)
-test_PCA = pca.fit_transform(X_)
-test_PCA = pd.DataFrame(data = test_PCA)
-testDF = pd.DataFrame(data=test_PCA.loc[:,0:1], index=test_PCA.index)
-testDF = pd.concat((testDF,y_), axis=1, join="inner")
-testDF.columns = ["x-axis", "y-axis", "Label"]
-sns.lmplot(x="x-axis", y="y-axis", hue="Label", data=testDF, fit_reg=False, height=8)
-plt.grid()
 
-n_components = 2
-learning_rate = 300
-perplexity = 30
-early_exaggeration = 12
-init = 'random'
-tSNE = TSNE(n_components=n_components, learning_rate=learning_rate,
-perplexity=perplexity, early_exaggeration=early_exaggeration, init=init)
-X_test_tSNE = tSNE.fit_transform(test_PCA.loc[:,:])
-X_test_tSNE = pd.DataFrame(data=X_test_tSNE)
-testDF = pd.DataFrame(data=X_test_tSNE.loc[:,:], index=test_PCA.index)
-testDF = pd.concat((testDF,y_), axis=1, join="inner")
-testDF.columns = ["x-axis", "y-axis", "Label"]
-################## This part should include K-means algorithm ###################
-##########################################################################
-testDF["Label"] = labels
-sns.lmplot(x="x-axis", y="y-axis", hue="Label", data=testDF, fit_reg=False, height=8)
-plt.title("Clustering Result")
-plt.grid()
+def run_and_plot_pca_kmeans(X, y, n_components):
+    pca = PCA(n_components=n_components)
+    X_pca = pca.fit_transform(X)
+
+    kmeans = KMeans(n_clusters=10, random_state=42)
+    y_pred = kmeans.fit_predict(X_pca)
+
+    tsne = TSNE(n_components=2, random_state=42)
+    X_tsne = tsne.fit_transform(X_pca)
+
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x=X_tsne[:, 0], y=X_tsne[:, 1], hue=y_pred, palette=sns.color_palette("hls", 10))
+    plt.title(f't-SNE visualization of K-means clustering with PCA={n_components}')
+    plt.show()
+
+    ari_score = adjusted_rand_score(y, y_pred)
+    print(f'Adjusted Rand Index (ARI) with PCA={n_components}: {ari_score}')
+
+    return ari_score
+
+dimensions = [784, 100, 50, 10]
+ari_scores = {}
+
+for dim in dimensions:
+    ari_scores[dim] = run_and_plot_pca_kmeans(X_test, y_test, dim)
+
+ari_df = pd.DataFrame(list(ari_scores.items()), columns=['PCA_Dimension', 'ARI_Score'])
+print(ari_df)
